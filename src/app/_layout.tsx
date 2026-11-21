@@ -16,7 +16,7 @@ function InitialLayout() {
     if (!userToken && !inAuthGroup) {
       router.replace('/(auth)/login' as any);
     } else if (userToken && inAuthGroup) {
-      router.replace('/(tabs)' as any);
+      router.replace('/(home)' as any);
     }
   }, [userToken, isLoading, segments]);
 
