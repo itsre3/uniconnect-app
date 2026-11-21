@@ -20,6 +20,8 @@ import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
+import * as SecureStore from 'expo-secure-store';
+import { useAuth } from '../../ctx';
 
 interface SelectOption {
   id: string;
@@ -67,7 +69,7 @@ export default function UniversityOnboardingScreen() {
   // 1. Fetch universities on mount
   useEffect(() => {
     setLoadingUniversities(true);
-    fetch(`${API_URL}/universities`)
+    fetch(`${API_URL}/onboarding/universities`)
       .then((res) => res.json())
       .then((data) => {
         setUniversities(Array.isArray(data) ? data : data.universities ?? []);
@@ -89,8 +91,8 @@ export default function UniversityOnboardingScreen() {
     setLoadingAcademic(true);
     try {
       const [facRes, deptRes] = await Promise.all([
-        fetch(`${API_URL}/universities/${uni.id}/faculties`),
-        fetch(`${API_URL}/universities/${uni.id}/departments`),
+      fetch(`${API_URL}/onboarding/faculties?institution_id=${uni.id}`),
+        fetch(`${API_URL}/onboarding/departments?institution_id=${uni.id}`),
       ]);
 
       if (facRes.ok) {
@@ -125,7 +127,7 @@ export default function UniversityOnboardingScreen() {
     setLoadingAcademic(true);
     try {
       const res = await fetch(
-        `${API_URL}/universities/${selectedUniversity.id}/departments?faculty_id=${faculty.id}`
+        `${API_URL}/onboarding/departments?faculty_id=${faculty.id}`
       );
       if (res.ok) {
         const deptData = await res.json();
@@ -175,11 +177,11 @@ export default function UniversityOnboardingScreen() {
     setErrorMsg('');
 
     try {
-      const response = await fetch(`${API_URL}/users/complete-profile`, {
+      const response = await fetch(`${API_URL}/onboarding`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role: 'university_student',
+          //role: 'university_student',
           email: email?.trim().toLowerCase(),
           first_name: firstName.trim(),
           last_name: lastName.trim(),

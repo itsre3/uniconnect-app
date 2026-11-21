@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, ComponentRef } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import {
   KeyboardAvoidingView,
   Platform,

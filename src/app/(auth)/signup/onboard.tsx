@@ -46,7 +46,7 @@ const ROLE_OPTIONS: RoleOption[] = [
 
 export default function SelectRoleScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  //const { email } = useLocalSearchParams<{ email?: string }>();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
   const colors = Colors[isDark ? 'dark' : 'light'];
@@ -58,13 +58,22 @@ export default function SelectRoleScreen() {
     company: '/(auth)/signup/company',
   };
 
+  const { email, token } = useLocalSearchParams<{
+    email?: string;
+    token?: string;
+  }>();
+
   const handleContinue = () => {
     if (!selectedRole) return;
     router.push({
       pathname: ROUTE_MAP[selectedRole],
-      params: email ? { email } : {},
+      params: {
+        ...(email ? { email } : {}),
+        ...(token ? { token } : {}),
+      },
     } as any);
   };
+
 
   return (
     <ThemedView style={styles.container}>

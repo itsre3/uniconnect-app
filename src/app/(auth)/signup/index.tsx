@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -58,6 +59,10 @@ export default function SignupScreen() {
       const data = await response.json();
 
       if (response.ok) {
+        const accessToken = data.access_token || data.token;
+        if (accessToken) {
+          await SecureStore.setItemAsync('access_token', accessToken);
+        }
         router.push({
           pathname: '/(auth)/signup/verify-email',
           params: { email: email.trim().toLowerCase() },
