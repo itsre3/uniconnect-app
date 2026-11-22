@@ -33,7 +33,11 @@ type PickerTarget = 'university' | 'faculty' | 'department' | null;
 
 export default function UniversityOnboardingScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { userToken, login } = useAuth();
+  const { email, token: paramToken } = useLocalSearchParams<{
+    email?: string;
+    token?: string;
+  }>();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
@@ -66,17 +70,42 @@ export default function UniversityOnboardingScreen() {
   const [activePicker, setActivePicker] = useState<PickerTarget>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const getToken = async () => {
+    return (
+      userToken || paramToken || (await SecureStore.getItemAsync('userToken'))
+    );
+  };
+
   // 1. Fetch universities on mount
   useEffect(() => {
+    let isMounted = true;
     setLoadingUniversities(true);
-    fetch(`${API_URL}/onboarding/universities`)
-      .then((res) => res.json())
-      .then((data) => {
-        setUniversities(Array.isArray(data) ? data : data.universities ?? []);
-      })
-      .catch((err) => console.log('Fetch universities error:', err))
-      .finally(() => setLoadingUniversities(false));
-  }, []);
+
+    (async () => {
+      try {
+        const activeToken = await getToken();
+        const res = await fetch(`${API_URL}/onboarding/universities`, {
+          headers: {
+            ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+          },
+        });
+        const data = await res.json();
+        if (isMounted) {
+          setUniversities(
+            Array.isArray(data) ? data : data.universities ?? []
+          );
+        }
+      } catch (err) {
+        console.log('Fetch universities error:', err);
+      } finally {
+        if (isMounted) setLoadingUniversities(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userToken, paramToken]);
 
   // 2. GET faculties & departments when a university is selected
   const handleSelectUniversity = async (uni: SelectOption) => {
@@ -90,9 +119,18 @@ export default function UniversityOnboardingScreen() {
 
     setLoadingAcademic(true);
     try {
+      const activeToken = await getToken();
+      const authHeaders = {
+        ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+      };
+
       const [facRes, deptRes] = await Promise.all([
-      fetch(`${API_URL}/onboarding/faculties?institution_id=${uni.id}`),
-        fetch(`${API_URL}/onboarding/departments?institution_id=${uni.id}`),
+        fetch(`${API_URL}/onboarding/faculties?institution_id=${uni.id}`, {
+          headers: authHeaders,
+        }),
+        fetch(`${API_URL}/onboarding/departments?institution_id=${uni.id}`, {
+          headers: authHeaders,
+        }),
       ]);
 
       if (facRes.ok) {
@@ -126,8 +164,14 @@ export default function UniversityOnboardingScreen() {
 
     setLoadingAcademic(true);
     try {
+      const activeToken = await getToken();
       const res = await fetch(
-        `${API_URL}/onboarding/departments?faculty_id=${faculty.id}`
+        `${API_URL}/onboarding/departments?faculty_id=${faculty.id}`,
+        {
+          headers: {
+            ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+          },
+        }
       );
       if (res.ok) {
         const deptData = await res.json();
@@ -177,9 +221,13 @@ export default function UniversityOnboardingScreen() {
     setErrorMsg('');
 
     try {
+      const activeToken = await getToken();
       const response = await fetch(`${API_URL}/onboarding`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+        },
         body: JSON.stringify({
           //role: 'university_student',
           email: email?.trim().toLowerCase(),
@@ -196,7 +244,10 @@ export default function UniversityOnboardingScreen() {
       const data = await response.json();
 
       if (response.ok) {
-        router.replace('/(tabs)' as any);
+        if (activeToken) {
+          await login(activeToken, data.user ?? data);
+        }
+        router.replace('/(home)' as any);
       } else if (Array.isArray(data.detail)) {
         const failedField = data.detail[0]?.loc?.[1] || 'Field';
         setErrorMsg(`Error in ${failedField}: ${data.detail[0]?.msg}`);
