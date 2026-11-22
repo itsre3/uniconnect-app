@@ -13,16 +13,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
+import { useAuth } from '../../ctx';
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 export default function CompanyOnboardingScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { userToken, login } = useAuth();
+  const { email, token: paramToken } = useLocalSearchParams<{
+    email?: string;
+    token?: string;
+  }>();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
@@ -34,6 +40,12 @@ export default function CompanyOnboardingScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const getToken = async () => {
+    return (
+      userToken || paramToken || (await SecureStore.getItemAsync('userToken'))
+    );
+  };
+
   useEffect(() => {
     const clean = username.trim().toLowerCase();
     if (clean.length < 3) {
@@ -44,8 +56,14 @@ export default function CompanyOnboardingScreen() {
     setUsernameStatus('checking');
     const timer = setTimeout(async () => {
       try {
+        const activeToken = await getToken();
         const res = await fetch(
-          `${API_URL}/api/v1/onboarding/check-username?username=${encodeURIComponent(clean)}`
+          `${API_URL}/api/v1/onboarding/check-username?username=${encodeURIComponent(clean)}`,
+          {
+            headers: {
+              ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+            },
+          }
         );
         if (res.ok) {
           const data = await res.json();
@@ -59,7 +77,7 @@ export default function CompanyOnboardingScreen() {
     }, 450);
 
     return () => clearTimeout(timer);
-  }, [username]);
+  }, [username, userToken, paramToken]);
 
   const handleSubmit = async () => {
     if (!companyName.trim() || !username.trim() || !address.trim()) {
@@ -75,9 +93,13 @@ export default function CompanyOnboardingScreen() {
     setErrorMsg('');
 
     try {
+      const activeToken = await getToken();
       const response = await fetch(`${API_URL}/api/v1/onboarding/company`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+        },
         body: JSON.stringify({
           role: 'company',
           email: email?.trim().toLowerCase(),
@@ -90,7 +112,10 @@ export default function CompanyOnboardingScreen() {
       const data = await response.json();
 
       if (response.ok) {
-        router.replace('/(tabs)' as any);
+        if (activeToken) {
+          await login(activeToken, data.user ?? data);
+        }
+        router.replace('/(home)' as any);
       } else if (Array.isArray(data.detail)) {
         const failedField = data.detail[0]?.loc?.[1] || 'Field';
         setErrorMsg(`Error in ${failedField}: ${data.detail[0]?.msg}`);

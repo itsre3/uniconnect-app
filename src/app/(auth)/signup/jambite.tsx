@@ -16,10 +16,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
+import { useAuth } from '../../ctx';
 
 interface SelectOption {
   id: string;
@@ -31,7 +33,11 @@ type PickerTarget = 'university' | 'department' | null;
 
 export default function JambOnboardingScreen() {
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { userToken, login } = useAuth();
+  const { email, token: paramToken } = useLocalSearchParams<{
+    email?: string;
+    token?: string;
+  }>();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
@@ -56,16 +62,41 @@ export default function JambOnboardingScreen() {
   const [activePicker, setActivePicker] = useState<PickerTarget>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const getToken = async () => {
+    return (
+      userToken || paramToken || (await SecureStore.getItemAsync('userToken'))
+    );
+  };
+
   useEffect(() => {
+    let isMounted = true;
     setLoadingUniversities(true);
-    fetch(`${API_URL}/universities`)
-      .then((res) => res.json())
-      .then((data) => {
-        setUniversities(Array.isArray(data) ? data : data.universities ?? []);
-      })
-      .catch((err) => console.log('Fetch universities error:', err))
-      .finally(() => setLoadingUniversities(false));
-  }, []);
+
+    (async () => {
+      try {
+        const activeToken = await getToken();
+        const res = await fetch(`${API_URL}/onboarding/universities`, {
+          headers: {
+            ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+          },
+        });
+        const data = await res.json();
+        if (isMounted) {
+          setUniversities(
+            Array.isArray(data) ? data : data.universities ?? []
+          );
+        }
+      } catch (err) {
+        console.log('Fetch universities error:', err);
+      } finally {
+        if (isMounted) setLoadingUniversities(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userToken, paramToken]);
 
   const handleSelectUniversity = async (uni: SelectOption) => {
     setSelectedUniversity(uni);
@@ -76,7 +107,15 @@ export default function JambOnboardingScreen() {
 
     setLoadingDepartments(true);
     try {
-      const res = await fetch(`${API_URL}/universities/${uni.id}/departments`);
+      const activeToken = await getToken();
+      const res = await fetch(
+        `${API_URL}/onboarding/departments?institution_id=${uni.id}`,
+        {
+          headers: {
+            ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+          },
+        }
+      );
       if (res.ok) {
         const deptData = await res.json();
         setDepartments(
@@ -119,9 +158,13 @@ export default function JambOnboardingScreen() {
     setErrorMsg('');
 
     try {
+      const activeToken = await getToken();
       const response = await fetch(`${API_URL}/onboarding`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+        },
         body: JSON.stringify({
           role: 'jamb_student',
           email: email?.trim().toLowerCase(),
@@ -137,7 +180,10 @@ export default function JambOnboardingScreen() {
       const data = await response.json();
 
       if (response.ok) {
-        router.replace('/(tabs)' as any);
+        if (activeToken) {
+          await login(activeToken, data.user ?? data);
+        }
+        router.replace('/(home)' as any);
       } else if (Array.isArray(data.detail)) {
         const failedField = data.detail[0]?.loc?.[1] || 'Field';
         setErrorMsg(`Error in ${failedField}: ${data.detail[0]?.msg}`);
