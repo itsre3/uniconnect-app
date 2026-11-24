@@ -16,7 +16,6 @@ export default function SignupLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="verify-email" />
-      <Stack.Screen name="select-role" />
       <Stack.Screen name="student" />
       <Stack.Screen name="jambite" />
       <Stack.Screen name="company" />

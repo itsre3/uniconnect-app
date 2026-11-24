@@ -63,8 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function loadStoredAuth() {
       try {
         const [token, cachedUser] = await Promise.all([
-          getStorageItem('userToken'),
-          getStorageItem('userData'),
+          getStorageItem('access_token'),
+          getStorageItem('user'),
         ]);
 
         if (token && token.trim() !== '') {
@@ -92,29 +92,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (token: string, user?: any) => {
     if (!token) return;
-    await setStorageItem('userToken', token);
+    await setStorageItem('access_token', token);
     setUserToken(token);
 
     if (user) {
-      await setStorageItem('userData', JSON.stringify(user));
+      await setStorageItem('user', JSON.stringify(user));
       setUserData(user);
     }
   }, []);
 
   const logout = useCallback(async () => {
     await Promise.all([
-      deleteStorageItem('userToken'),
-      deleteStorageItem('userData'),
+      deleteStorageItem('access_token'),
+      deleteStorageItem('user'),
     ]);
     setUserToken(null);
     setUserData(null);
   }, []);
 
   const updateUserData = useCallback(async (newUserData: any) => {
-    if (newUserData) {
-      await setStorageItem('userData', JSON.stringify(newUserData));
+    if (newUserData)
+      await setStorageItem('user', JSON.stringify(newUserData));
       setUserData(newUserData);
-    }
   }, []);
 
   return (

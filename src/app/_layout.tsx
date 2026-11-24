@@ -4,7 +4,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from './ctx';
 
 function InitialLayout() {
-  const { userToken, isLoading } = useAuth();
+  const { userToken, isLoading, userData } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -12,13 +12,20 @@ function InitialLayout() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)' || segments[0] === 'login';
+    const isOnboarded = userData.is_onboarded;
+    const inOnboardRoute = segments[0] === '(auth)' && segments[1] === 'signup' && segments[2] === 'onboard';
+    const inSignupFlow = segments[0] === '(auth)' && segments[1] === 'signup';
 
     if (!userToken && !inAuthGroup) {
       router.replace('/(auth)/login' as any);
-    } else if (userToken && inAuthGroup) {
+    } 
+    else if (userToken && !isOnboarded && !inSignupFlow) {
+      router.replace('/(auth)/signup/onboard' as any);
+    }
+				else if (userToken && inAuthGroup && isOnboarded) {
       router.replace('/(home)' as any);
     }
-  }, [userToken, isLoading, segments]);
+  }, [userToken, isLoading, segments, userData]);
 
   if (isLoading) {
     return (

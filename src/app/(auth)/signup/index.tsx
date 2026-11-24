@@ -57,11 +57,16 @@ export default function SignupScreen() {
       });
 
       const data = await response.json();
-
+						
+						console.log(data);
       if (response.ok) {
-        const accessToken = data.access_token || data.token;
+        const accessToken = data.data.access_token || data.token;
+        const user_data = data.data.user || null;
         if (accessToken) {
           await SecureStore.setItemAsync('access_token', accessToken);
+          await SecureStore.setItemAsync('user', JSON.stringify(user_data));
+          console.log("Access token set");
+          console.log(accessToken);
         }
         router.push({
           pathname: '/(auth)/signup/verify-email',
