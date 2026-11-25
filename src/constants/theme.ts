@@ -2,51 +2,56 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+export const Brand = {
+  primaryPurple: '#40239A',
+  secondaryPurple: '#7557D9',
+  accentLavender: '#A99AEF',
+  lightBackground: '#F8F7FC',
+  darkBackground: '#14121D',
+} as const;
+
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    tint: '#FF4F5A'
+    text: '#14121D',
+    background: '#F8F7FC',
+    backgroundElement: '#EFEDF8',
+    backgroundSelected: '#E2DEF3',
+    textSecondary: '#5E5B73',
+    tint: '#40239A',
+    primary: '#40239A',
+    secondary: '#7557D9',
+    accent: '#A99AEF',
+    logoLeft: '#40239A',
+    logoRight: '#A99AEF',
+    border: '#E4E1F0',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    tint: '#FF4F5A'
+    text: '#F8F7FC',
+    background: '#14121D',
+    backgroundElement: '#1E1B2E',
+    backgroundSelected: '#2A263D',
+    textSecondary: '#A8A4BD',
+    tint: '#A99AEF',
+    primary: '#7557D9',
+    secondary: '#40239A',
+    accent: '#A99AEF',
+    logoLeft: '#FFFFFF',
+    logoRight: '#A99AEF',
+    border: '#2B273E',
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
+export const Fonts = {
+  sans: 'Sora_400Regular',
+  sansMedium: 'Sora_500Medium',
+  sansSemiBold: 'Sora_600SemiBold',
+  sansBold: 'Sora_700Bold',
+  serif: Platform.OS === 'ios' ? 'ui-serif' : 'serif',
+  rounded: Platform.OS === 'ios' ? 'ui-rounded' : 'sans-serif',
+  mono: Platform.OS === 'ios' ? 'ui-monospace' : 'monospace',
+} as const;
 
 export const Spacing = {
   half: 2,
