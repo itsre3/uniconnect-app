@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { API_URL } from '@/constants/api';
 
 async function getStorageItem(key: string): Promise<string | null> {
   try {
@@ -33,6 +34,7 @@ interface AuthContextType {
   login: (token: string, user?: any) => Promise<void>;
   logout: () => Promise<void>;
   updateUserData: (newUserData: any) => Promise<void>;
+  refreshUser: (overrideToken?: string) => Promise<any | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -42,8 +44,8 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   logout: async () => {},
   updateUserData: async () => {},
+  refreshUser: async () => null,
 });
-
 
 export function useAuth() {
   const context = useContext(AuthContext);
@@ -59,7 +61,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userData, setUserData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const refreshUser = useCallback(
+    async (overrideToken?: string) => {
+      try {
+        const token =
+          overrideToken ||
+          userToken ||
+          (await getStorageItem('access_token'));
+
+        if (!token || token.trim() === '') return null;
+
+        // Match this path to your Swagger UI current-user route (e.g. '/auth/me' or '/users/me')
+        const response = await fetch(`${API_URL}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const freshUser = await response.json();
+          await setStorageItem('user', JSON.stringify(freshUser));
+          setUserData(freshUser);
+          return freshUser;
+        }
+
+        if (response.status === 401) {
+          await Promise.all([
+            deleteStorageItem('access_token'),
+            deleteStorageItem('user'),
+          ]);
+          setUserToken(null);
+          setUserData(null);
+        }
+      } catch (error) {
+        // Keep cached userData in SecureStore if offline
+        console.warn('Failed to refresh user profile on boot:', error);
+      }
+      return null;
+    },
+    [userToken]
+  );
+
   useEffect(() => {
+    let isMounted = true;
+
     async function loadStoredAuth() {
       try {
         const [token, cachedUser] = await Promise.all([
@@ -67,11 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           getStorageItem('user'),
         ]);
 
-        if (token && token.trim() !== '') {
-          setUserToken(token);
-        } else {
-          setUserToken(null);
-        }
+        if (!isMounted) return;
 
         if (cachedUser) {
           try {
@@ -80,26 +121,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUserData(null);
           }
         }
+
+        if (token && token.trim() !== '') {
+          setUserToken(token);
+          await refreshUser(token);
+        } else {
+          setUserToken(null);
+        }
       } catch (error) {
         console.warn('Failed to load credentials from storage:', error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     }
 
     loadStoredAuth();
-  }, []);
 
-  const login = useCallback(async (token: string, user?: any) => {
-    if (!token) return;
-    await setStorageItem('access_token', token);
-    setUserToken(token);
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshUser]);
 
-    if (user) {
-      await setStorageItem('user', JSON.stringify(user));
-      setUserData(user);
-    }
-  }, []);
+  const login = useCallback(
+    async (token: string, user?: any) => {
+      if (!token) return;
+      await setStorageItem('access_token', token);
+      setUserToken(token);
+
+      if (user) {
+        await setStorageItem('user', JSON.stringify(user));
+        setUserData(user);
+      } else {
+        await refreshUser(token);
+      }
+    },
+    [refreshUser]
+  );
 
   const logout = useCallback(async () => {
     await Promise.all([
@@ -111,9 +168,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateUserData = useCallback(async (newUserData: any) => {
-    if (newUserData)
+    if (newUserData) {
       await setStorageItem('user', JSON.stringify(newUserData));
       setUserData(newUserData);
+    }
   }, []);
 
   return (
@@ -125,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         updateUserData,
+        refreshUser,
       }}
     >
       {children}

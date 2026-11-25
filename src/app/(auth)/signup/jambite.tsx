@@ -29,36 +29,46 @@ interface SelectOption {
   code?: string;
 }
 
-type PickerTarget = 'university' | 'department' | null;
+type PickerTarget = 'university' | 'faculty' | 'department' | null;
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 export default function JambOnboardingScreen() {
   const router = useRouter();
   const { userToken, login } = useAuth();
-  const { email, token: paramToken } = useLocalSearchParams<{
+  const { token: paramToken } = useLocalSearchParams<{
     email?: string;
     token?: string;
   }>();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
+  // Form fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [examYear, setExamYear] = useState('2027');
 
+  // Academic dropdown state
   const [universities, setUniversities] = useState<SelectOption[]>([]);
+  const [faculties, setFaculties] = useState<SelectOption[]>([]);
   const [departments, setDepartments] = useState<SelectOption[]>([]);
 
   const [selectedUniversity, setSelectedUniversity] =
     useState<SelectOption | null>(null);
+  const [selectedFaculty, setSelectedFaculty] = useState<SelectOption | null>(
+    null
+  );
   const [selectedDepartment, setSelectedDepartment] =
     useState<SelectOption | null>(null);
 
+  // Loading & UI state
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [loadingUniversities, setLoadingUniversities] = useState(false);
-  const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [loadingAcademic, setLoadingAcademic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Searchable modal state
   const [activePicker, setActivePicker] = useState<PickerTarget>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -68,6 +78,49 @@ export default function JambOnboardingScreen() {
     );
   };
 
+  // Live debounced username availability check
+  useEffect(() => {
+    const clean = username.trim();
+    if (clean.length < 3) {
+      setUsernameStatus('idle');
+      return;
+    }
+
+    let isCancelled = false;
+    setUsernameStatus('checking');
+
+    const timer = setTimeout(async () => {
+      try {
+        const activeToken = await getToken();
+        const res = await fetch(
+          `${API_URL}/auth/username?username=${encodeURIComponent(clean)}`,
+          {
+            headers: {
+              ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+            },
+          }
+        );
+
+        if (isCancelled) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          setUsernameStatus(data.available);
+        } else {
+          setUsernameStatus('idle');
+        }
+      } catch {
+        if (!isCancelled) setUsernameStatus('idle');
+      }
+    }, 450);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [username, userToken, paramToken]);
+
+  // 1. Fetch universities on mount
   useEffect(() => {
     let isMounted = true;
     setLoadingUniversities(true);
@@ -98,18 +151,66 @@ export default function JambOnboardingScreen() {
     };
   }, [userToken, paramToken]);
 
+  // 2. GET faculties & departments when a university is selected
   const handleSelectUniversity = async (uni: SelectOption) => {
     setSelectedUniversity(uni);
+    setSelectedFaculty(null);
     setSelectedDepartment(null);
+    setFaculties([]);
     setDepartments([]);
     setActivePicker(null);
     setSearchQuery('');
 
-    setLoadingDepartments(true);
+    setLoadingAcademic(true);
+    try {
+      const activeToken = await getToken();
+      const authHeaders = {
+        ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+      };
+
+      const [facRes, deptRes] = await Promise.all([
+        fetch(`${API_URL}/onboarding/faculties?institution_id=${uni.id}`, {
+          headers: authHeaders,
+        }),
+        fetch(`${API_URL}/onboarding/departments?institution_id=${uni.id}`, {
+          headers: authHeaders,
+        }),
+      ]);
+
+      if (facRes.ok) {
+        const facData = await facRes.json();
+        setFaculties(
+          Array.isArray(facData) ? facData : facData.faculties ?? []
+        );
+      }
+
+      if (deptRes.ok) {
+        const deptData = await deptRes.json();
+        setDepartments(
+          Array.isArray(deptData) ? deptData : deptData.departments ?? []
+        );
+      }
+    } catch (err) {
+      console.log('Fetch university faculties/departments error:', err);
+    } finally {
+      setLoadingAcademic(false);
+    }
+  };
+
+  // 3. Refine departments when a faculty is selected
+  const handleSelectFaculty = async (faculty: SelectOption) => {
+    setSelectedFaculty(faculty);
+    setSelectedDepartment(null);
+    setActivePicker(null);
+    setSearchQuery('');
+
+    if (!selectedUniversity) return;
+
+    setLoadingAcademic(true);
     try {
       const activeToken = await getToken();
       const res = await fetch(
-        `${API_URL}/onboarding/departments?institution_id=${uni.id}`,
+        `${API_URL}/onboarding/departments?faculty_id=${faculty.id}`,
         {
           headers: {
             ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
@@ -123,14 +224,20 @@ export default function JambOnboardingScreen() {
         );
       }
     } catch (err) {
-      console.log('Fetch university departments error:', err);
+      console.log('Fetch faculty departments error:', err);
     } finally {
-      setLoadingDepartments(false);
+      setLoadingAcademic(false);
     }
   };
 
   const filteredOptions = useMemo(() => {
-    const source = activePicker === 'university' ? universities : departments;
+    const source =
+      activePicker === 'university'
+        ? universities
+        : activePicker === 'faculty'
+          ? faculties
+          : departments;
+
     const q = searchQuery.trim().toLowerCase();
     if (!q) return source;
 
@@ -139,7 +246,7 @@ export default function JambOnboardingScreen() {
         item.name.toLowerCase().includes(q) ||
         (item.code && item.code.toLowerCase().includes(q))
     );
-  }, [activePicker, universities, departments, searchQuery]);
+  }, [activePicker, universities, faculties, departments, searchQuery]);
 
   const handleSubmit = async () => {
     if (
@@ -154,26 +261,30 @@ export default function JambOnboardingScreen() {
       return;
     }
 
+    if (usernameStatus === 'taken') {
+      setErrorMsg('That username is already taken.');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg('');
 
     try {
       const activeToken = await getToken();
-      const response = await fetch(`${API_URL}/onboarding`, {
+      const response = await fetch(`${API_URL}/onboarding/jambite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
         },
         body: JSON.stringify({
-          role: 'jamb_student',
-          email: email?.trim().toLowerCase(),
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          username: username.trim(),
-          university_id: selectedUniversity.id,
-          department_id: selectedDepartment.id,
-          //exam_year: Number(examYear.trim()),
+          username: username.trim().toLowerCase(),
+          intended_institution_id: selectedUniversity.id,
+          intended_faculty_id: selectedFaculty?.id ?? null,
+          intended_department_id: selectedDepartment.id,
+          exam_year: Number(examYear.trim()),
         }),
       });
 
@@ -210,6 +321,7 @@ export default function JambOnboardingScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {/* Back Button */}
             <Pressable
               onPress={() => router.back()}
               style={[
@@ -224,6 +336,7 @@ export default function JambOnboardingScreen() {
               <Ionicons name="chevron-back" size={22} color={colors.text} />
             </Pressable>
 
+            {/* Outer Safe Card */}
             <View
               style={[
                 styles.cardBox,
@@ -250,6 +363,7 @@ export default function JambOnboardingScreen() {
                 </View>
               ) : null}
 
+              {/* Safe Box 1: Personal Identity */}
               <View
                 style={[
                   styles.sectionSafeBox,
@@ -298,12 +412,45 @@ export default function JambOnboardingScreen() {
                     { marginBottom: 0, backgroundColor: colors.background },
                   ]}
                   outlineStyle={styles.inputOutline}
-                  outlineColor={colors.backgroundSelected}
+                  outlineColor={
+                    usernameStatus === 'taken'
+                      ? colors.tint
+                      : colors.backgroundSelected
+                  }
                   activeOutlineColor={colors.tint}
                   textColor={colors.text}
+                  left={<TextInput.Icon icon="at" />}
+                  right={
+                    usernameStatus === 'checking' ? (
+                      <TextInput.Icon
+                        icon={() => (
+                          <ActivityIndicator size="small" color={colors.tint} />
+                        )}
+                      />
+                    ) : usernameStatus === 'available' ? (
+                      <TextInput.Icon icon="check-circle" color="#22C55E" />
+                    ) : usernameStatus === 'taken' ? (
+                      <TextInput.Icon icon="close-circle" color={colors.tint} />
+                    ) : undefined
+                  }
                 />
+
+                {usernameStatus === 'taken' ? (
+                  <ThemedText
+                    style={[styles.usernameHint, { color: colors.tint }]}
+                  >
+                    Username is already taken
+                  </ThemedText>
+                ) : usernameStatus === 'available' ? (
+                  <ThemedText
+                    style={[styles.usernameHint, { color: '#22C55E' }]}
+                  >
+                    Username is available
+                  </ThemedText>
+                ) : null}
               </View>
 
+              {/* Safe Box 2: Academic Details */}
               <View
                 style={[
                   styles.sectionSafeBox,
@@ -313,6 +460,7 @@ export default function JambOnboardingScreen() {
                   },
                 ]}
               >
+                {/* University */}
                 <ThemedText style={styles.fieldLabel}>
                   Preferred University
                 </ThemedText>
@@ -337,7 +485,7 @@ export default function JambOnboardingScreen() {
                   >
                     {selectedUniversity
                       ? `${selectedUniversity.name}${selectedUniversity.code ? ` (${selectedUniversity.code})` : ''}`
-                      : 'Choose target university...'}
+                      : 'Choose a university...'}
                   </ThemedText>
                   {loadingUniversities ? (
                     <ActivityIndicator size="small" color={colors.tint} />
@@ -350,9 +498,48 @@ export default function JambOnboardingScreen() {
                   )}
                 </Pressable>
 
-                <ThemedText style={styles.fieldLabel}>
-                  Desired Course / Department
-                </ThemedText>
+                {/* Faculty */}
+                <ThemedText style={styles.fieldLabel}>Faculty</ThemedText>
+                <Pressable
+                  disabled={!selectedUniversity}
+                  onPress={() => setActivePicker('faculty')}
+                  style={[
+                    styles.selectTrigger,
+                    {
+                      backgroundColor: colors.backgroundElement,
+                      borderColor: colors.backgroundSelected,
+                      opacity: selectedUniversity ? 1 : 0.5,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      color: selectedFaculty
+                        ? colors.text
+                        : colors.textSecondary,
+                    }}
+                  >
+                    {selectedFaculty
+                      ? selectedFaculty.name
+                      : selectedUniversity
+                        ? 'Choose a faculty...'
+                        : 'Select a university first...'}
+                  </ThemedText>
+                  {loadingAcademic ? (
+                    <ActivityIndicator size="small" color={colors.tint} />
+                  ) : (
+                    <Ionicons
+                      name="chevron-down"
+                      size={18}
+                      color={colors.textSecondary}
+                    />
+                  )}
+                </Pressable>
+
+                {/* Department */}
+                <ThemedText style={styles.fieldLabel}>Department</ThemedText>
                 <Pressable
                   disabled={!selectedUniversity}
                   onPress={() => setActivePicker('department')}
@@ -377,10 +564,10 @@ export default function JambOnboardingScreen() {
                     {selectedDepartment
                       ? `${selectedDepartment.name}${selectedDepartment.code ? ` (${selectedDepartment.code})` : ''}`
                       : selectedUniversity
-                        ? 'Choose desired course...'
+                        ? 'Choose a department...'
                         : 'Select a university first...'}
                   </ThemedText>
-                  {loadingDepartments ? (
+                  {loadingAcademic ? (
                     <ActivityIndicator size="small" color={colors.tint} />
                   ) : (
                     <Ionicons
@@ -391,6 +578,7 @@ export default function JambOnboardingScreen() {
                   )}
                 </Pressable>
 
+                {/* UTME Exam Year */}
                 <TextInput
                   mode="outlined"
                   label="UTME Exam Year (e.g. 2027)"
@@ -417,7 +605,7 @@ export default function JambOnboardingScreen() {
                 mode="contained"
                 onPress={handleSubmit}
                 loading={submitting}
-                disabled={submitting}
+                disabled={submitting || usernameStatus === 'checking'}
                 buttonColor={colors.tint}
                 textColor="#ffffff"
                 style={styles.button}
@@ -431,6 +619,7 @@ export default function JambOnboardingScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
+      {/* Searchable iOS Bottom-Sheet Modal */}
       <Modal
         visible={activePicker !== null}
         animationType="slide"
@@ -451,8 +640,10 @@ export default function JambOnboardingScreen() {
           >
             <ThemedText style={styles.modalTitle}>
               {activePicker === 'university'
-                ? 'Select Target University'
-                : 'Select Desired Course'}
+                ? 'Select University'
+                : activePicker === 'faculty'
+                  ? 'Select Faculty'
+                  : 'Select Department'}
             </ThemedText>
             <Pressable
               onPress={() => {
@@ -483,7 +674,9 @@ export default function JambOnboardingScreen() {
               placeholder={
                 activePicker === 'university'
                   ? 'Search universities...'
-                  : 'Search courses...'
+                  : activePicker === 'faculty'
+                    ? 'Search faculties...'
+                    : 'Search departments...'
               }
               placeholderTextColor={colors.textSecondary}
               autoFocus
@@ -516,6 +709,8 @@ export default function JambOnboardingScreen() {
               const isSelected =
                 (activePicker === 'university' &&
                   selectedUniversity?.id === item.id) ||
+                (activePicker === 'faculty' &&
+                  selectedFaculty?.id === item.id) ||
                 (activePicker === 'department' &&
                   selectedDepartment?.id === item.id);
 
@@ -524,6 +719,8 @@ export default function JambOnboardingScreen() {
                   onPress={() => {
                     if (activePicker === 'university') {
                       handleSelectUniversity(item);
+                    } else if (activePicker === 'faculty') {
+                      handleSelectFaculty(item);
                     } else {
                       setSelectedDepartment(item);
                       setActivePicker(null);
@@ -612,6 +809,12 @@ const styles = StyleSheet.create({
   },
   inputOutline: {
     borderRadius: 12,
+  },
+  usernameHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+    marginLeft: 4,
   },
   selectTrigger: {
     height: 50,

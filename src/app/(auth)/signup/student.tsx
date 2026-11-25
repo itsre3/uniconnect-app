@@ -16,11 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
-import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '../../ctx';
 
 interface SelectOption {
@@ -30,11 +30,12 @@ interface SelectOption {
 }
 
 type PickerTarget = 'university' | 'faculty' | 'department' | null;
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 export default function UniversityOnboardingScreen() {
   const router = useRouter();
   const { userToken, login } = useAuth();
-  const { email, token: paramToken } = useLocalSearchParams<{
+  const { token: paramToken } = useLocalSearchParams<{
     email?: string;
     token?: string;
   }>();
@@ -61,6 +62,7 @@ export default function UniversityOnboardingScreen() {
     useState<SelectOption | null>(null);
 
   // Loading & UI state
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [loadingUniversities, setLoadingUniversities] = useState(false);
   const [loadingAcademic, setLoadingAcademic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -75,6 +77,48 @@ export default function UniversityOnboardingScreen() {
       userToken || paramToken || (await SecureStore.getItemAsync('userToken'))
     );
   };
+
+  // Live debounced username availability check
+  useEffect(() => {
+    const clean = username.trim();
+    if (clean.length < 3) {
+      setUsernameStatus('idle');
+      return;
+    }
+
+    let isCancelled = false;
+    setUsernameStatus('checking');
+
+    const timer = setTimeout(async () => {
+      try {
+        const activeToken = await getToken();
+        const res = await fetch(
+          `${API_URL}/auth/username?username=${encodeURIComponent(clean)}`,
+          {
+            headers: {
+              ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+            },
+          }
+        );
+
+        if (isCancelled) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          setUsernameStatus(data.available);
+        } else {
+          setUsernameStatus('idle');
+        }
+      } catch {
+        if (!isCancelled) setUsernameStatus('idle');
+      }
+    }, 450);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [username, userToken, paramToken]);
 
   // 1. Fetch universities on mount
   useEffect(() => {
@@ -217,20 +261,23 @@ export default function UniversityOnboardingScreen() {
       return;
     }
 
+    if (usernameStatus === 'taken') {
+      setErrorMsg('That username is already taken.');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg('');
 
     try {
       const activeToken = await getToken();
-      const response = await fetch(`${API_URL}/onboarding`, {
+      const response = await fetch(`${API_URL}/onboarding/student`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
         },
         body: JSON.stringify({
-          //role: 'university_student',
-          //email: email?.trim().toLowerCase(),
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           username: username.trim(),
@@ -366,10 +413,42 @@ export default function UniversityOnboardingScreen() {
                     { marginBottom: 0, backgroundColor: colors.background },
                   ]}
                   outlineStyle={styles.inputOutline}
-                  outlineColor={colors.backgroundSelected}
+                  outlineColor={
+                    usernameStatus === 'taken'
+                      ? colors.tint
+                      : colors.backgroundSelected
+                  }
                   activeOutlineColor={colors.tint}
                   textColor={colors.text}
+                  left={<TextInput.Icon icon="at" />}
+                  right={
+                    usernameStatus === 'checking' ? (
+                      <TextInput.Icon
+                        icon={() => (
+                          <ActivityIndicator size="small" color={colors.tint} />
+                        )}
+                      />
+                    ) : usernameStatus === 'available' ? (
+                      <TextInput.Icon icon="check-circle" color="#22C55E" />
+                    ) : usernameStatus === 'taken' ? (
+                      <TextInput.Icon icon="close-circle" color={colors.tint} />
+                    ) : undefined
+                  }
                 />
+
+                {usernameStatus === 'taken' ? (
+                  <ThemedText
+                    style={[styles.usernameHint, { color: colors.tint }]}
+                  >
+                    Username is already taken
+                  </ThemedText>
+                ) : usernameStatus === 'available' ? (
+                  <ThemedText
+                    style={[styles.usernameHint, { color: '#22C55E' }]}
+                  >
+                    Username is available
+                  </ThemedText>
+                ) : null}
               </View>
 
               {/* Safe Box 2: Academic Details */}
@@ -525,7 +604,7 @@ export default function UniversityOnboardingScreen() {
                 mode="contained"
                 onPress={handleSubmit}
                 loading={submitting}
-                disabled={submitting}
+                disabled={submitting || usernameStatus === 'checking'}
                 buttonColor={colors.tint}
                 textColor="#ffffff"
                 style={styles.button}
@@ -729,6 +808,12 @@ const styles = StyleSheet.create({
   },
   inputOutline: {
     borderRadius: 12,
+  },
+  usernameHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+    marginLeft: 4,
   },
   selectTrigger: {
     height: 50,

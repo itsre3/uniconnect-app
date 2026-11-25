@@ -12,7 +12,7 @@ function InitialLayout() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)' || segments[0] === 'login';
-    const isOnboarded = userData.is_onboarded;
+    const isOnboarded = Boolean(userData?.is_onboarded);
     const inOnboardRoute = segments[0] === '(auth)' && segments[1] === 'signup' && segments[2] === 'onboard';
     const inSignupFlow = segments[0] === '(auth)' && segments[1] === 'signup';
 
@@ -38,7 +38,7 @@ function InitialLayout() {
   return (
     <View style={styles.outer}>
       <View style={styles.inner}>
-        <Slot />
+         <Slot />
       </View>
     </View>
   );

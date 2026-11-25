@@ -12,13 +12,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
+import { useAuth } from '../ctx';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login } = useAuth();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
   const colors = Colors[isDark ? 'dark' : 'light'];
@@ -40,19 +43,39 @@ export default function LoginScreen() {
     setErrorMsg('');
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const formData = new URLSearchParams();
+      formData.append('username', cleanEmail);
+      formData.append('password', password);
+     
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString(),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        router.replace('/(tabs)' as any);
+        const token = data.access_token || data.token;
+        const userDetails = data.user ?? {
+          email: cleanEmail,
+          ...data,
+        };
+
+        if (!token) {
+          setErrorMsg('Login succeeded, but no access token was returned.');
+          return;
+        }
+
+        await SecureStore.setItemAsync('access_token', token);
+        await SecureStore.setItemAsync('user', JSON.stringify(userDetails));
+        await login(token, userDetails);
+
+        router.replace('/(home)' as any);
+      } else if (Array.isArray(data.detail)) {
+        const failedField = data.detail[0]?.loc?.[1] || 'Field';
+        setErrorMsg(`Error in ${failedField}: ${data.detail[0]?.msg}`);
       } else {
         setErrorMsg(data.detail || 'Invalid email or password.');
       }
