@@ -1,16 +1,22 @@
+import { Stack } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/theme';
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AuthTabs from '@/components/login-tab';
 
 export default function AuthLayout() {
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'light' ? 'light' : 'dark'];
+  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
   return (
-    <>
-      <AnimatedSplashOverlay />
-      <AuthTabs />
-    </>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="welcome" />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="forgot-password" />
+      <Stack.Screen name="signup" />
+    </Stack>
   );
 }

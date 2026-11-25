@@ -78,7 +78,7 @@ export default function FeedScreen() {
 
   const handleLogoutToSignup = async () => {
     await logout();
-    router.replace('/(auth)/signup' as any);
+    //router.replace('/(auth)/signup' as any);
   };
 
   const toggleLike = (id: string) => {

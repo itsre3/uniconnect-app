@@ -31,6 +31,7 @@ interface AuthContextType {
   userToken: string | null;
   userData: any | null;
   isLoading: boolean;
+  justLoggedOut: boolean;
   login: (token: string, user?: any) => Promise<void>;
   logout: () => Promise<void>;
   updateUserData: (newUserData: any) => Promise<void>;
@@ -41,6 +42,7 @@ const AuthContext = createContext<AuthContextType>({
   userToken: null,
   userData: null,
   isLoading: true,
+  justLoggedOut: false,
   login: async () => {},
   logout: async () => {},
   updateUserData: async () => {},
@@ -60,47 +62,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userToken, setUserToken] = useState<string | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [justLoggedOut, setJustLoggedOut] = useState(false);
 
-  const refreshUser = useCallback(
-    async (overrideToken?: string) => {
-      try {
-        const token =
-          overrideToken ||
-          userToken ||
-          (await getStorageItem('access_token'));
+  const refreshUser = useCallback(async (overrideToken?: string) => {
+    try {
+      const token = overrideToken || (await getStorageItem('access_token'));
 
-        if (!token || token.trim() === '') return null;
+      if (!token || token.trim() === '') return null;
 
-        // Match this path to your Swagger UI current-user route (e.g. '/auth/me' or '/users/me')
-        const response = await fetch(`${API_URL}/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+      // Match this path to your Swagger UI current-user route (e.g. '/auth/me' or '/users/me')
+      const response = await fetch(`${API_URL}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-        if (response.ok) {
-          const freshUser = await response.json();
-          await setStorageItem('user', JSON.stringify(freshUser));
-          setUserData(freshUser);
-          return freshUser;
-        }
-
-        if (response.status === 401) {
-          await Promise.all([
-            deleteStorageItem('access_token'),
-            deleteStorageItem('user'),
-          ]);
-          setUserToken(null);
-          setUserData(null);
-        }
-      } catch (error) {
-        // Keep cached userData in SecureStore if offline
-        console.warn('Failed to refresh user profile on boot:', error);
+      if (response.ok) {
+        const freshUser = await response.json();
+        await setStorageItem('user', JSON.stringify(freshUser));
+        setUserData(freshUser);
+        return freshUser;
       }
-      return null;
-    },
-    [userToken]
-  );
+
+      if (response.status === 401) {
+        await Promise.all([
+          deleteStorageItem('access_token'),
+          deleteStorageItem('user'),
+        ]);
+        setUserToken(null);
+        setUserData(null);
+      }
+    } catch (error) {
+      // Keep cached userData in SecureStore if offline
+      console.warn('Failed to refresh user profile on boot:', error);
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -145,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (token: string, user?: any) => {
       if (!token) return;
+      setJustLoggedOut(false);
       await setStorageItem('access_token', token);
       setUserToken(token);
 
@@ -163,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       deleteStorageItem('access_token'),
       deleteStorageItem('user'),
     ]);
+    setJustLoggedOut(true);
     setUserToken(null);
     setUserData(null);
   }, []);
@@ -180,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userToken,
         userData,
         isLoading,
+        justLoggedOut,
         login,
         logout,
         updateUserData,

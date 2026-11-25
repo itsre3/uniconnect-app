@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { StyleSheet, Text, useColorScheme } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import Animated, {
   Easing,
@@ -18,6 +18,8 @@ interface AnimatedSplashProps {
   onFinish: () => void;
 }
 
+const SPLASH_HOLD_MS = 2100;
+
 export function AnimatedSplash({ isReady, onFinish }: AnimatedSplashProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -30,7 +32,7 @@ export function AnimatedSplash({ isReady, onFinish }: AnimatedSplashProps) {
   const containerOpacity = useSharedValue(1);
   const contentScale = useSharedValue(1);
   const wordmarkOpacity = useSharedValue(0);
-  const wordmarkTranslateY = useSharedValue(10);
+  const wordmarkTranslateY = useSharedValue(12);
   const loaderOpacity = useSharedValue(0);
   const loaderTranslateX = useSharedValue(-48);
 
@@ -41,40 +43,40 @@ export function AnimatedSplash({ isReady, onFinish }: AnimatedSplashProps) {
     // 1. Swap native splash -> identical React Native frame
     SplashScreen.hideAsync().catch(() => {});
 
-    // 2. Fade in wordmark beneath the symbol
+    // 2. Hold pure symbol briefly, then reveal wordmark & tagline
     wordmarkOpacity.value = withDelay(
-      180,
-      withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) })
+      350,
+      withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) })
     );
     wordmarkTranslateY.value = withDelay(
-      180,
-      withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) })
+      350,
+      withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
     );
 
-    // 3. Reveal loading indicator if initialization takes longer than ~550ms
-    loaderOpacity.value = withDelay(550, withTiming(1, { duration: 250 }));
+    // 3. Reveal subtle loading bar if auth/network check is still running
+    loaderOpacity.value = withDelay(950, withTiming(1, { duration: 300 }));
     loaderTranslateX.value = withRepeat(
       withTiming(48, { duration: 850, easing: Easing.inOut(Easing.ease) }),
       -1,
       true
     );
 
-    // Ensure the wordmark fade-in completes before dismissing
-    const timer = setTimeout(() => setMinDurationDone(true), 950);
+    // 4. Hold completed brand lockup on screen like Duolingo before dismissing
+    const timer = setTimeout(() => setMinDurationDone(true), SPLASH_HOLD_MS);
     return () => clearTimeout(timer);
   };
 
-  // 4. Exit transition once initialization & minimum brand hold complete
+  // 5. Smooth fade & slight scale-out once both hold time and app init finish
   useEffect(() => {
     if (!isReady || !minDurationDone) return;
 
     contentScale.value = withTiming(1.04, {
-      duration: 380,
+      duration: 420,
       easing: Easing.out(Easing.cubic),
     });
     containerOpacity.value = withTiming(
       0,
-      { duration: 380, easing: Easing.out(Easing.cubic) },
+      { duration: 420, easing: Easing.out(Easing.cubic) },
       (finished) => {
         if (finished) {
           runOnJS(onFinish)();
@@ -115,14 +117,12 @@ export function AnimatedSplash({ isReady, onFinish }: AnimatedSplashProps) {
       ]}
     >
       <Animated.View style={[styles.centerGroup, centerGroupStyle]}>
-        {/* Matches app.json imageWidth: 96 for seamless handoff */}
         <UniConnectLogo
           size={96}
           leftColor={theme.logoLeft}
           rightColor={theme.logoRight}
         />
 
-        {/* Wordmark + Tagline positioned beneath centered symbol */}
         <Animated.View style={[styles.wordmarkContainer, wordmarkStyle]}>
           <Text style={[styles.brandTitle, { color: theme.text }]}>
             UniConnect
@@ -131,7 +131,6 @@ export function AnimatedSplash({ isReady, onFinish }: AnimatedSplashProps) {
             Your campus. Your people.
           </Text>
 
-          {/* Short loading indicator (only visible if initialization is still running) */}
           <Animated.View
             style={[
               styles.loaderTrack,

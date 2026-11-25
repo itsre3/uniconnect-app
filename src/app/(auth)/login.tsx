@@ -72,7 +72,7 @@ export default function LoginScreen() {
         await SecureStore.setItemAsync('user', JSON.stringify(userDetails));
         await login(token, userDetails);
 
-        router.replace('/(home)' as any);
+        //router.replace('/(home)' as any);
       } else if (Array.isArray(data.detail)) {
         const failedField = data.detail[0]?.loc?.[1] || 'Field';
         setErrorMsg(`Error in ${failedField}: ${data.detail[0]?.msg}`);
