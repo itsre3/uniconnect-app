@@ -32,6 +32,7 @@ interface AuthContextType {
   userData: any | null;
   isLoading: boolean;
   justLoggedOut: boolean;
+  clearJustLoggedOut: () => void;
   login: (token: string, user?: any) => Promise<void>;
   logout: () => Promise<void>;
   updateUserData: (newUserData: any) => Promise<void>;
@@ -43,6 +44,7 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   isLoading: true,
   justLoggedOut: false,
+  clearJustLoggedOut: () => {},
   login: async () => {},
   logout: async () => {},
   updateUserData: async () => {},
@@ -166,6 +168,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserData(null);
   }, []);
 
+  const clearJustLoggedOut = useCallback(() => {
+    setJustLoggedOut(false);
+  }, []);
+
   const updateUserData = useCallback(async (newUserData: any) => {
     if (newUserData) {
       await setStorageItem('user', JSON.stringify(newUserData));
@@ -180,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userData,
         isLoading,
         justLoggedOut,
+        clearJustLoggedOut,
         login,
         logout,
         updateUserData,

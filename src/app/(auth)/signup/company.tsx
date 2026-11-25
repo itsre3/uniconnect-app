@@ -1,26 +1,37 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
   useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { ThemedView } from '@/components/themed-view';
-import { ThemedText } from '@/components/themed-text';
-import { Colors, Spacing } from '@/constants/theme';
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
+import { UniConnectLogo } from '@/components/UniConnectLogo';
+import { Colors, Fonts } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
 import { useAuth } from '../../ctx';
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
+type FocusedInput =
+  | 'companyName'
+  | 'username'
+  | 'industry'
+  | 'description'
+  | 'website'
+  | 'logoUrl'
+  | null;
 
 export default function CompanyOnboardingScreen() {
   const router = useRouter();
@@ -39,6 +50,7 @@ export default function CompanyOnboardingScreen() {
   const [description, setDescription] = useState('');
   const [website, setWebsite] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [focusedField, setFocusedField] = useState<FocusedInput>(null);
 
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +107,9 @@ export default function CompanyOnboardingScreen() {
   }, [username, userToken, paramToken]);
 
   const handleSubmit = async () => {
+    Keyboard.dismiss();
+    setFocusedField(null);
+
     if (
       !companyName.trim() ||
       !username.trim() ||
@@ -153,338 +168,596 @@ export default function CompanyOnboardingScreen() {
     }
   };
 
-  const surfaceFill = isDark ? '#121214' : '#F7F7F9';
-  const strokeColor = isDark ? '#26262A' : '#E4E4E8';
+  const getFieldStyle = (field: FocusedInput, hasError = false) => {
+    const isFocused = focusedField === field;
+    return {
+      backgroundColor: isDark ? colors.backgroundElement : '#FFFFFF',
+      borderColor: hasError
+        ? '#EF4444'
+        : isFocused
+          ? colors.tint
+          : isDark
+            ? colors.backgroundSelected
+            : '#E2DFEF',
+      borderWidth: isFocused || hasError ? 1.8 : 1.2,
+      shadowColor: hasError ? '#EF4444' : colors.tint,
+      shadowOpacity: isFocused ? 0.28 : 0,
+      shadowRadius: isFocused ? 10 : 0,
+      shadowOffset: { width: 0, height: 0 },
+    };
+  };
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Soft top-right ambient purple wash */}
+      <View style={styles.ambientGlow} pointerEvents="none">
+        <Svg width="100%" height="320" viewBox="0 0 400 320">
+          <Defs>
+            <RadialGradient id="topGlow" cx="62%" cy="18%" r="72%">
+              <Stop
+                offset="0%"
+                stopColor={isDark ? '#7557D9' : '#A99AEF'}
+                stopOpacity={isDark ? '0.32' : '0.42'}
+              />
+              <Stop
+                offset="65%"
+                stopColor={isDark ? '#40239A' : '#A99AEF'}
+                stopOpacity={isDark ? '0.10' : '0.14'}
+              />
+              <Stop
+                offset="100%"
+                stopColor={colors.background}
+                stopOpacity="0"
+              />
+            </RadialGradient>
+          </Defs>
+          <Ellipse cx="245" cy="60" rx="260" ry="220" fill="url(#topGlow)" />
+        </Svg>
+      </View>
+
       <SafeAreaView style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          {/* Minimal Top Bar */}
-          <View style={styles.topBar}>
-            <Pressable
-              onPress={() => router.back()}
-              style={[
-                styles.backBtn,
-                {
-                  backgroundColor: surfaceFill,
-                  borderColor: strokeColor,
-                },
-              ]}
-              hitSlop={10}
-            >
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-            </Pressable>
-
-            <View
-              style={[
-                styles.rolePill,
-                { backgroundColor: surfaceFill, borderColor: strokeColor },
-              ]}
-            >
-              <Ionicons name="business-outline" size={14} color={colors.tint} />
-              <ThemedText
-                style={[styles.rolePillText, { color: colors.textSecondary }]}
-              >
-                Organization
-              </ThemedText>
-            </View>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.scrollContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+          <TouchableWithoutFeedback
+            onPress={() => {
+              Keyboard.dismiss();
+              setFocusedField(null);
+            }}
+            accessible={false}
           >
-            {/* Header */}
-            <View style={styles.headerBlock}>
-              <ThemedText type="title" style={styles.title}>
-                Set up your company
-              </ThemedText>
-              <ThemedText
-                style={[styles.subtitle, { color: colors.textSecondary }]}
-              >
-                Create your organization identity to connect with students and
-                post opportunities.
-              </ThemedText>
-            </View>
-
-            {errorMsg ? (
-              <View style={[styles.errorBanner, { borderColor: colors.tint }]}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={18}
-                  color={colors.tint}
-                />
-                <ThemedText style={[styles.errorText, { color: colors.tint }]}>
-                  {errorMsg}
-                </ThemedText>
-              </View>
-            ) : null}
-
-            {/* Identity */}
-            <ThemedText
-              style={[styles.sectionEyebrow, { color: colors.textSecondary }]}
+            <ScrollView
+              contentContainerStyle={styles.scrollContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              IDENTITY
-            </ThemedText>
+              {/* Top Nav Row with Back Arrow & Organization Pill */}
+              <View style={styles.topBar}>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace('/(auth)/signup/onboard' as any);
+                    }
+                  }}
+                  hitSlop={12}
+                  style={styles.backBtn}
+                >
+                  <Ionicons name="chevron-back" size={26} color={colors.text} />
+                </Pressable>
 
-            <TextInput
-              mode="outlined"
-              label="Company Name"
-              value={companyName}
-              onChangeText={setCompanyName}
-              textContentType="organizationName"
-              style={[styles.input, { backgroundColor: surfaceFill }]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={strokeColor}
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-              left={<TextInput.Icon icon="domain" />}
-            />
-
-            <TextInput
-              mode="outlined"
-              label="Handle / Username"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="username"
-              style={[styles.input, { backgroundColor: surfaceFill }]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={
-                usernameStatus === 'taken' ? colors.tint : strokeColor
-              }
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-              left={<TextInput.Icon icon="at" />}
-              right={
-                usernameStatus === 'checking' ? (
-                  <TextInput.Icon
-                    icon={() => (
-                      <ActivityIndicator size="small" color={colors.tint} />
-                    )}
+                <View
+                  style={[
+                    styles.rolePill,
+                    {
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : '#FFFFFF',
+                      borderColor: isDark
+                        ? colors.backgroundSelected
+                        : '#E2DFEF',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="business-outline"
+                    size={14}
+                    color={colors.tint}
                   />
-                ) : usernameStatus === 'available' ? (
-                  <TextInput.Icon icon="check-circle" color="#22C55E" />
-                ) : usernameStatus === 'taken' ? (
-                  <TextInput.Icon icon="close-circle" color={colors.tint} />
-                ) : undefined
-              }
-            />
+                  <Text
+                    style={[
+                      styles.rolePillText,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Organization
+                  </Text>
+                </View>
+              </View>
 
-            {usernameStatus === 'taken' ? (
-              <ThemedText style={[styles.statusHint, { color: colors.tint }]}>
-                That handle is already taken
-              </ThemedText>
-            ) : usernameStatus === 'available' ? (
-              <ThemedText style={[styles.statusHint, { color: '#22C55E' }]}>
-                Handle is available
-              </ThemedText>
-            ) : null}
+              {/* Centered UniConnect Brand Header */}
+              <View style={styles.brandHeader}>
+                <UniConnectLogo
+                  size={44}
+                  leftColor={colors.logoLeft}
+                  rightColor={colors.logoRight}
+                />
+                <Text style={[styles.brandName, { color: colors.text }]}>
+                  UniConnect
+                </Text>
+              </View>
 
-            <TextInput
-              mode="outlined"
-              label="Industry (e.g. FinTech, EdTech, Energy)"
-              value={industry}
-              onChangeText={setIndustry}
-              style={[styles.input, { backgroundColor: surfaceFill }]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={strokeColor}
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-              left={<TextInput.Icon icon="briefcase-outline" />}
-            />
+              {/* Left-Aligned Title & Subtitle */}
+              <View style={styles.headingBlock}>
+                <Text style={[styles.title, { color: colors.text }]}>
+                  Set up your company
+                </Text>
+                <Text
+                  style={[styles.subtitle, { color: colors.textSecondary }]}
+                >
+                  Create your organization identity to connect with students and
+                  post opportunities
+                </Text>
+              </View>
 
-            <TextInput
-              mode="outlined"
-              label="About / Description"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              style={[
-                styles.input,
-                styles.textArea,
-                { backgroundColor: surfaceFill },
-              ]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={strokeColor}
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-            />
+              {/* Error Banner */}
+              {errorMsg ? (
+                <View style={styles.errorBox}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={18}
+                    color="#EF4444"
+                  />
+                  <Text style={styles.errorText}>{errorMsg}</Text>
+                </View>
+              ) : null}
 
-            {/* Online Presence */}
-            <ThemedText
-              style={[
-                styles.sectionEyebrow,
-                { color: colors.textSecondary, marginTop: 8 },
-              ]}
-            >
-              LINKS & BRANDING (OPTIONAL)
-            </ThemedText>
+              {/* Identity Section */}
+              <Text
+                style={[styles.sectionLabel, { color: colors.textSecondary }]}
+              >
+                IDENTITY
+              </Text>
+              <View style={styles.formGroup}>
+                <View
+                  style={[
+                    styles.pillInputWrapper,
+                    getFieldStyle('companyName'),
+                  ]}
+                >
+                  <Ionicons
+                    name="business-outline"
+                    size={19}
+                    color={
+                      focusedField === 'companyName'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={companyName}
+                    onChangeText={setCompanyName}
+                    onFocus={() => setFocusedField('companyName')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'companyName' ? null : prev
+                      )
+                    }
+                    placeholder="Company name"
+                    placeholderTextColor={colors.textSecondary}
+                    textContentType="organizationName"
+                    returnKeyType="next"
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
 
-            <TextInput
-              mode="outlined"
-              label="Website URL"
-              placeholder="https://yourcompany.com"
-              value={website}
-              onChangeText={setWebsite}
-              keyboardType="url"
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="URL"
-              style={[styles.input, { backgroundColor: surfaceFill }]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={strokeColor}
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-              left={<TextInput.Icon icon="web" />}
-            />
+                <View>
+                  <View
+                    style={[
+                      styles.pillInputWrapper,
+                      getFieldStyle('username', usernameStatus === 'taken'),
+                    ]}
+                  >
+                    <Ionicons
+                      name="at-outline"
+                      size={19}
+                      color={
+                        usernameStatus === 'taken'
+                          ? '#EF4444'
+                          : focusedField === 'username'
+                            ? colors.tint
+                            : colors.textSecondary
+                      }
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      value={username}
+                      onChangeText={setUsername}
+                      onFocus={() => setFocusedField('username')}
+                      onBlur={() =>
+                        setFocusedField((prev) =>
+                          prev === 'username' ? null : prev
+                        )
+                      }
+                      placeholder="Handle / username"
+                      placeholderTextColor={colors.textSecondary}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="username"
+                      returnKeyType="next"
+                      style={[styles.input, { color: colors.text }]}
+                    />
+                    {usernameStatus === 'checking' ? (
+                      <ActivityIndicator size="small" color={colors.tint} />
+                    ) : usernameStatus === 'available' ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color="#22C55E"
+                      />
+                    ) : usernameStatus === 'taken' ? (
+                      <Ionicons
+                        name="close-circle"
+                        size={20}
+                        color="#EF4444"
+                      />
+                    ) : null}
+                  </View>
 
-            <TextInput
-              mode="outlined"
-              label="Logo URL"
-              placeholder="https://.../logo.png"
-              value={logoUrl}
-              onChangeText={setLogoUrl}
-              keyboardType="url"
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="URL"
-              style={[
-                styles.input,
-                { marginBottom: 24, backgroundColor: surfaceFill },
-              ]}
-              outlineStyle={styles.inputOutline}
-              outlineColor={strokeColor}
-              activeOutlineColor={colors.tint}
-              textColor={colors.text}
-              left={<TextInput.Icon icon="image-outline" />}
-            />
+                  {usernameStatus === 'taken' ? (
+                    <Text style={[styles.statusHint, { color: '#EF4444' }]}>
+                      That handle is already taken
+                    </Text>
+                  ) : usernameStatus === 'available' ? (
+                    <Text style={[styles.statusHint, { color: '#22C55E' }]}>
+                      Handle is available
+                    </Text>
+                  ) : null}
+                </View>
 
-            <Button
-              mode="contained"
-              onPress={handleSubmit}
-              loading={submitting}
-              disabled={submitting || usernameStatus === 'checking'}
-              buttonColor={colors.tint}
-              textColor="#FFFFFF"
-              style={styles.button}
-              contentStyle={styles.buttonContent}
-              labelStyle={styles.buttonLabel}
-            >
-              Continue
-            </Button>
-          </ScrollView>
+                <View
+                  style={[styles.pillInputWrapper, getFieldStyle('industry')]}
+                >
+                  <Ionicons
+                    name="briefcase-outline"
+                    size={19}
+                    color={
+                      focusedField === 'industry'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={industry}
+                    onChangeText={setIndustry}
+                    onFocus={() => setFocusedField('industry')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'industry' ? null : prev
+                      )
+                    }
+                    placeholder="Industry (e.g. FinTech, EdTech, Energy)"
+                    placeholderTextColor={colors.textSecondary}
+                    returnKeyType="next"
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
+
+                <View
+                  style={[
+                    styles.textAreaWrapper,
+                    getFieldStyle('description'),
+                  ]}
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={19}
+                    color={
+                      focusedField === 'description'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.textAreaIcon}
+                  />
+                  <TextInput
+                    value={description}
+                    onChangeText={setDescription}
+                    onFocus={() => setFocusedField('description')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'description' ? null : prev
+                      )
+                    }
+                    placeholder="About / company description"
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                    style={[styles.textAreaInput, { color: colors.text }]}
+                  />
+                </View>
+              </View>
+
+              {/* Links & Branding Section */}
+              <Text
+                style={[styles.sectionLabel, { color: colors.textSecondary }]}
+              >
+                LINKS &amp; BRANDING (OPTIONAL)
+              </Text>
+              <View style={styles.formGroup}>
+                <View
+                  style={[styles.pillInputWrapper, getFieldStyle('website')]}
+                >
+                  <Ionicons
+                    name="globe-outline"
+                    size={19}
+                    color={
+                      focusedField === 'website'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={website}
+                    onChangeText={setWebsite}
+                    onFocus={() => setFocusedField('website')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'website' ? null : prev
+                      )
+                    }
+                    placeholder="Website URL (https://...)"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="URL"
+                    returnKeyType="next"
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
+
+                <View
+                  style={[styles.pillInputWrapper, getFieldStyle('logoUrl')]}
+                >
+                  <Ionicons
+                    name="image-outline"
+                    size={19}
+                    color={
+                      focusedField === 'logoUrl'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={logoUrl}
+                    onChangeText={setLogoUrl}
+                    onFocus={() => setFocusedField('logoUrl')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'logoUrl' ? null : prev
+                      )
+                    }
+                    placeholder="Logo URL (https://.../logo.png)"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="URL"
+                    returnKeyType="done"
+                    onSubmitEditing={handleSubmit}
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
+              </View>
+
+              {/* Centralized Submit Button */}
+              <Pressable
+                onPress={handleSubmit}
+                disabled={submitting || usernameStatus === 'checking'}
+                style={({ pressed }) => [
+                  styles.submitBtn,
+                  {
+                    backgroundColor: colors.tint,
+                    shadowColor: colors.tint,
+                    opacity:
+                      submitting || usernameStatus === 'checking'
+                        ? 0.65
+                        : pressed
+                          ? 0.9
+                          : 1,
+                  },
+                ]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <View style={styles.submitBtnContent}>
+                    <Text style={styles.submitBtnText}>Continue</Text>
+                    <Ionicons
+                      name="arrow-forward-outline"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                )}
+              </Pressable>
+            </ScrollView>
+          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  flex: { flex: 1 },
+  container: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 320,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 26,
+    paddingBottom: 36,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 22,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 6,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    alignItems: 'center',
+    width: 40,
+    height: 40,
     justifyContent: 'center',
   },
   rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 13,
     paddingVertical: 6,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.2,
   },
   rolePillText: {
+    fontFamily: Fonts.sansSemiBold,
     fontSize: 12,
-    fontWeight: '600',
   },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 22,
-    paddingTop: 14,
-    paddingBottom: Spacing.five,
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 30,
   },
-  headerBlock: {
-    marginBottom: 24,
+  brandName: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 23,
+    letterSpacing: -0.5,
+  },
+  headingBlock: {
+    marginBottom: 22,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginBottom: 8,
+    fontFamily: Fonts.sansBold,
+    fontSize: 29,
+    letterSpacing: -0.6,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.sans,
+    fontSize: 14.5,
     lineHeight: 21,
+    marginTop: 6,
   },
-  errorBanner: {
+  errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
-    borderRadius: 14,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 11,
     marginBottom: 18,
-    backgroundColor: 'rgba(255, 79, 90, 0.08)',
   },
   errorText: {
     flex: 1,
+    fontFamily: Fonts.sansMedium,
     fontSize: 13,
-    fontWeight: '500',
+    color: '#EF4444',
   },
-  sectionEyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
+  sectionLabel: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 11.5,
+    letterSpacing: 0.8,
     marginBottom: 10,
+    marginLeft: 6,
+  },
+  formGroup: {
+    gap: 14,
+    marginBottom: 24,
+  },
+  pillInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 56,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    marginBottom: 14,
-  },
-  textArea: {
-    minHeight: 88,
-  },
-  inputOutline: {
-    borderRadius: 14,
+    flex: 1,
+    height: '100%',
+    fontFamily: Fonts.sans,
+    fontSize: 15,
   },
   statusHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: -8,
-    marginBottom: 14,
-    marginLeft: 4,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 12.5,
+    marginTop: 6,
+    marginLeft: 16,
   },
-  button: {
+  textAreaWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    minHeight: 104,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  textAreaIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  textAreaInput: {
+    flex: 1,
+    minHeight: 74,
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  submitBtn: {
+    width: '100%',
+    height: 56,
     borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
   },
-  buttonContent: {
-    height: 52,
+  submitBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  buttonLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+  submitBtnText: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 17,
+    color: '#FFFFFF',
     letterSpacing: 0.2,
   },
 });

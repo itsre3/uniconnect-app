@@ -2,24 +2,26 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput as RNTextInput,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
   useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, TextInput } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { ThemedView } from '@/components/themed-view';
-import { ThemedText } from '@/components/themed-text';
-import { Colors, Spacing } from '@/constants/theme';
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
+import { UniConnectLogo } from '@/components/UniConnectLogo';
+import { Colors, Fonts } from '@/constants/theme';
 import { API_URL } from '@/constants/api';
 import { useAuth } from '../../ctx';
 
@@ -31,6 +33,7 @@ interface SelectOption {
 
 type PickerTarget = 'university' | 'faculty' | 'department' | null;
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken';
+type FocusedInput = 'firstName' | 'lastName' | 'username' | 'examYear' | null;
 
 export default function JambOnboardingScreen() {
   const router = useRouter();
@@ -40,13 +43,15 @@ export default function JambOnboardingScreen() {
     token?: string;
   }>();
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const isDark = scheme === 'dark';
+  const colors = Colors[isDark ? 'dark' : 'light'];
 
   // Form fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [examYear, setExamYear] = useState('2027');
+  const [focusedField, setFocusedField] = useState<FocusedInput>(null);
 
   // Academic dropdown state
   const [universities, setUniversities] = useState<SelectOption[]>([]);
@@ -74,7 +79,10 @@ export default function JambOnboardingScreen() {
 
   const getToken = async () => {
     return (
-      userToken || paramToken || (await SecureStore.getItemAsync('userToken'))
+      userToken ||
+      paramToken ||
+      (await SecureStore.getItemAsync('access_token')) ||
+      (await SecureStore.getItemAsync('userToken'))
     );
   };
 
@@ -105,7 +113,11 @@ export default function JambOnboardingScreen() {
 
         if (res.ok) {
           const data = await res.json();
-          setUsernameStatus(data.available);
+          if (typeof data.available === 'boolean') {
+            setUsernameStatus(data.available ? 'available' : 'taken');
+          } else {
+            setUsernameStatus(data.available);
+          }
         } else {
           setUsernameStatus('idle');
         }
@@ -249,6 +261,9 @@ export default function JambOnboardingScreen() {
   }, [activePicker, universities, faculties, departments, searchQuery]);
 
   const handleSubmit = async () => {
+    Keyboard.dismiss();
+    setFocusedField(null);
+
     if (
       !firstName.trim() ||
       !lastName.trim() ||
@@ -309,184 +324,335 @@ export default function JambOnboardingScreen() {
     }
   };
 
+  const getPillStyle = (field: FocusedInput, hasError = false) => {
+    const isFocused = focusedField === field;
+    return {
+      backgroundColor: isDark ? colors.backgroundElement : '#FFFFFF',
+      borderColor: hasError
+        ? '#EF4444'
+        : isFocused
+          ? colors.tint
+          : isDark
+            ? colors.backgroundSelected
+            : '#E2DFEF',
+      borderWidth: isFocused || hasError ? 1.8 : 1.2,
+      shadowColor: hasError ? '#EF4444' : colors.tint,
+      shadowOpacity: isFocused ? 0.28 : 0,
+      shadowRadius: isFocused ? 10 : 0,
+      shadowOffset: { width: 0, height: 0 },
+    };
+  };
+
   return (
-    <ThemedView style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Soft top-right ambient purple wash */}
+      <View style={styles.ambientGlow} pointerEvents="none">
+        <Svg width="100%" height="320" viewBox="0 0 400 320">
+          <Defs>
+            <RadialGradient id="topGlow" cx="62%" cy="18%" r="72%">
+              <Stop
+                offset="0%"
+                stopColor={isDark ? '#7557D9' : '#A99AEF'}
+                stopOpacity={isDark ? '0.32' : '0.42'}
+              />
+              <Stop
+                offset="65%"
+                stopColor={isDark ? '#40239A' : '#A99AEF'}
+                stopOpacity={isDark ? '0.10' : '0.14'}
+              />
+              <Stop
+                offset="100%"
+                stopColor={colors.background}
+                stopOpacity="0"
+              />
+            </RadialGradient>
+          </Defs>
+          <Ellipse cx="245" cy="60" rx="260" ry="220" fill="url(#topGlow)" />
+        </Svg>
+      </View>
+
       <SafeAreaView style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+          <TouchableWithoutFeedback
+            onPress={() => {
+              Keyboard.dismiss();
+              setFocusedField(null);
+            }}
+            accessible={false}
           >
-            {/* Back Button */}
-            <Pressable
-              onPress={() => router.back()}
-              style={[
-                styles.backBtn,
-                {
-                  backgroundColor: colors.backgroundElement,
-                  borderColor: colors.backgroundSelected,
-                },
-              ]}
-              hitSlop={10}
+            <ScrollView
+              contentContainerStyle={styles.scrollContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
-            </Pressable>
-
-            {/* Outer Safe Card */}
-            <View
-              style={[
-                styles.cardBox,
-                {
-                  backgroundColor: colors.backgroundElement,
-                  borderColor: colors.backgroundSelected,
-                },
-              ]}
-            >
-              <ThemedText type="title" style={styles.title}>
-                Complete Your Profile
-              </ThemedText>
-              <ThemedText
-                style={[styles.subtitle, { color: colors.textSecondary }]}
-              >
-                Set up your JAMB aspirant details
-              </ThemedText>
-
-              {errorMsg ? (
-                <View style={[styles.errorBox, { borderColor: colors.tint }]}>
-                  <ThemedText style={[styles.errorText, { color: colors.tint }]}>
-                    {errorMsg}
-                  </ThemedText>
-                </View>
-              ) : null}
-
-              {/* Safe Box 1: Personal Identity */}
-              <View
-                style={[
-                  styles.sectionSafeBox,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.backgroundSelected,
-                  },
-                ]}
-              >
-                <TextInput
-                  mode="outlined"
-                  label="First Name"
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  textContentType="givenName"
-                  style={[styles.input, { backgroundColor: colors.background }]}
-                  outlineStyle={styles.inputOutline}
-                  outlineColor={colors.backgroundSelected}
-                  activeOutlineColor={colors.tint}
-                  textColor={colors.text}
-                />
-
-                <TextInput
-                  mode="outlined"
-                  label="Last Name"
-                  value={lastName}
-                  onChangeText={setLastName}
-                  textContentType="familyName"
-                  style={[styles.input, { backgroundColor: colors.background }]}
-                  outlineStyle={styles.inputOutline}
-                  outlineColor={colors.backgroundSelected}
-                  activeOutlineColor={colors.tint}
-                  textColor={colors.text}
-                />
-
-                <TextInput
-                  mode="outlined"
-                  label="Username"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textContentType="username"
-                  style={[
-                    styles.input,
-                    { marginBottom: 0, backgroundColor: colors.background },
-                  ]}
-                  outlineStyle={styles.inputOutline}
-                  outlineColor={
-                    usernameStatus === 'taken'
-                      ? colors.tint
-                      : colors.backgroundSelected
-                  }
-                  activeOutlineColor={colors.tint}
-                  textColor={colors.text}
-                  left={<TextInput.Icon icon="at" />}
-                  right={
-                    usernameStatus === 'checking' ? (
-                      <TextInput.Icon
-                        icon={() => (
-                          <ActivityIndicator size="small" color={colors.tint} />
-                        )}
-                      />
-                    ) : usernameStatus === 'available' ? (
-                      <TextInput.Icon icon="check-circle" color="#22C55E" />
-                    ) : usernameStatus === 'taken' ? (
-                      <TextInput.Icon icon="close-circle" color={colors.tint} />
-                    ) : undefined
-                  }
-                />
-
-                {usernameStatus === 'taken' ? (
-                  <ThemedText
-                    style={[styles.usernameHint, { color: colors.tint }]}
-                  >
-                    Username is already taken
-                  </ThemedText>
-                ) : usernameStatus === 'available' ? (
-                  <ThemedText
-                    style={[styles.usernameHint, { color: '#22C55E' }]}
-                  >
-                    Username is available
-                  </ThemedText>
-                ) : null}
-              </View>
-
-              {/* Safe Box 2: Academic Details */}
-              <View
-                style={[
-                  styles.sectionSafeBox,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.backgroundSelected,
-                  },
-                ]}
-              >
-                {/* University */}
-                <ThemedText style={styles.fieldLabel}>
-                  Preferred University
-                </ThemedText>
+              {/* Top Nav Row with Back Arrow & JAMB Pill */}
+              <View style={styles.topBar}>
                 <Pressable
-                  onPress={() => setActivePicker('university')}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace('/(auth)/signup/onboard' as any);
+                    }
+                  }}
+                  hitSlop={12}
+                  style={styles.backBtn}
+                >
+                  <Ionicons name="chevron-back" size={26} color={colors.text} />
+                </Pressable>
+
+                <View
                   style={[
-                    styles.selectTrigger,
+                    styles.rolePill,
                     {
-                      backgroundColor: colors.backgroundElement,
-                      borderColor: colors.backgroundSelected,
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : '#FFFFFF',
+                      borderColor: isDark
+                        ? colors.backgroundSelected
+                        : '#E2DFEF',
                     },
                   ]}
                 >
-                  <ThemedText
+                  <Ionicons name="book-outline" size={14} color={colors.tint} />
+                  <Text
+                    style={[
+                      styles.rolePillText,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    JAMB Aspirant
+                  </Text>
+                </View>
+              </View>
+
+              {/* Centered UniConnect Brand Header */}
+              <View style={styles.brandHeader}>
+                <UniConnectLogo
+                  size={44}
+                  leftColor={colors.logoLeft}
+                  rightColor={colors.logoRight}
+                />
+                <Text style={[styles.brandName, { color: colors.text }]}>
+                  UniConnect
+                </Text>
+              </View>
+
+              {/* Left-Aligned Title & Subtitle */}
+              <View style={styles.headingBlock}>
+                <Text style={[styles.title, { color: colors.text }]}>
+                  Complete Your Profile
+                </Text>
+                <Text
+                  style={[styles.subtitle, { color: colors.textSecondary }]}
+                >
+                  Set up your JAMB aspirant details
+                </Text>
+              </View>
+
+              {/* Error Banner */}
+              {errorMsg ? (
+                <View style={styles.errorBox}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={18}
+                    color="#EF4444"
+                  />
+                  <Text style={styles.errorText}>{errorMsg}</Text>
+                </View>
+              ) : null}
+
+              {/* Personal Identity Section */}
+              <Text
+                style={[styles.sectionLabel, { color: colors.textSecondary }]}
+              >
+                PERSONAL DETAILS
+              </Text>
+              <View style={styles.formGroup}>
+                <View
+                  style={[
+                    styles.pillInputWrapper,
+                    getPillStyle('firstName'),
+                  ]}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={19}
+                    color={
+                      focusedField === 'firstName'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    onFocus={() => setFocusedField('firstName')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'firstName' ? null : prev
+                      )
+                    }
+                    placeholder="First name"
+                    placeholderTextColor={colors.textSecondary}
+                    textContentType="givenName"
+                    returnKeyType="next"
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
+
+                <View
+                  style={[styles.pillInputWrapper, getPillStyle('lastName')]}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={19}
+                    color={
+                      focusedField === 'lastName'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={lastName}
+                    onChangeText={setLastName}
+                    onFocus={() => setFocusedField('lastName')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'lastName' ? null : prev
+                      )
+                    }
+                    placeholder="Last name"
+                    placeholderTextColor={colors.textSecondary}
+                    textContentType="familyName"
+                    returnKeyType="next"
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
+
+                <View>
+                  <View
+                    style={[
+                      styles.pillInputWrapper,
+                      getPillStyle('username', usernameStatus === 'taken'),
+                    ]}
+                  >
+                    <Ionicons
+                      name="at-outline"
+                      size={19}
+                      color={
+                        usernameStatus === 'taken'
+                          ? '#EF4444'
+                          : focusedField === 'username'
+                            ? colors.tint
+                            : colors.textSecondary
+                      }
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      value={username}
+                      onChangeText={setUsername}
+                      onFocus={() => setFocusedField('username')}
+                      onBlur={() =>
+                        setFocusedField((prev) =>
+                          prev === 'username' ? null : prev
+                        )
+                      }
+                      placeholder="Username"
+                      placeholderTextColor={colors.textSecondary}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="username"
+                      returnKeyType="done"
+                      style={[styles.input, { color: colors.text }]}
+                    />
+                    {usernameStatus === 'checking' ? (
+                      <ActivityIndicator size="small" color={colors.tint} />
+                    ) : usernameStatus === 'available' ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color="#22C55E"
+                      />
+                    ) : usernameStatus === 'taken' ? (
+                      <Ionicons
+                        name="close-circle"
+                        size={20}
+                        color="#EF4444"
+                      />
+                    ) : null}
+                  </View>
+
+                  {usernameStatus === 'taken' ? (
+                    <Text style={[styles.usernameHint, { color: '#EF4444' }]}>
+                      Username is already taken
+                    </Text>
+                  ) : usernameStatus === 'available' ? (
+                    <Text style={[styles.usernameHint, { color: '#22C55E' }]}>
+                      Username is available
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Academic Aspirations Section */}
+              <Text
+                style={[styles.sectionLabel, { color: colors.textSecondary }]}
+              >
+                INTENDED INSTITUTION
+              </Text>
+              <View style={styles.formGroup}>
+                {/* Preferred University */}
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setFocusedField(null);
+                    setActivePicker('university');
+                  }}
+                  style={[
+                    styles.selectTrigger,
+                    {
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : '#FFFFFF',
+                      borderColor: selectedUniversity
+                        ? colors.tint
+                        : isDark
+                          ? colors.backgroundSelected
+                          : '#E2DFEF',
+                      borderWidth: selectedUniversity ? 1.5 : 1.2,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="school-outline"
+                    size={19}
+                    color={
+                      selectedUniversity ? colors.tint : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <Text
                     numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      color: selectedUniversity
-                        ? colors.text
-                        : colors.textSecondary,
-                    }}
+                    style={[
+                      styles.selectText,
+                      {
+                        color: selectedUniversity
+                          ? colors.text
+                          : colors.textSecondary,
+                      },
+                    ]}
                   >
                     {selectedUniversity
                       ? `${selectedUniversity.name}${selectedUniversity.code ? ` (${selectedUniversity.code})` : ''}`
-                      : 'Choose a university...'}
-                  </ThemedText>
+                      : 'Preferred university...'}
+                  </Text>
                   {loadingUniversities ? (
                     <ActivityIndicator size="small" color={colors.tint} />
                   ) : (
@@ -499,34 +665,54 @@ export default function JambOnboardingScreen() {
                 </Pressable>
 
                 {/* Faculty */}
-                <ThemedText style={styles.fieldLabel}>Faculty</ThemedText>
                 <Pressable
                   disabled={!selectedUniversity}
-                  onPress={() => setActivePicker('faculty')}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setFocusedField(null);
+                    setActivePicker('faculty');
+                  }}
                   style={[
                     styles.selectTrigger,
                     {
-                      backgroundColor: colors.backgroundElement,
-                      borderColor: colors.backgroundSelected,
-                      opacity: selectedUniversity ? 1 : 0.5,
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : '#FFFFFF',
+                      borderColor: selectedFaculty
+                        ? colors.tint
+                        : isDark
+                          ? colors.backgroundSelected
+                          : '#E2DFEF',
+                      borderWidth: selectedFaculty ? 1.5 : 1.2,
+                      opacity: selectedUniversity ? 1 : 0.55,
                     },
                   ]}
                 >
-                  <ThemedText
+                  <Ionicons
+                    name="library-outline"
+                    size={19}
+                    color={
+                      selectedFaculty ? colors.tint : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <Text
                     numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      color: selectedFaculty
-                        ? colors.text
-                        : colors.textSecondary,
-                    }}
+                    style={[
+                      styles.selectText,
+                      {
+                        color: selectedFaculty
+                          ? colors.text
+                          : colors.textSecondary,
+                      },
+                    ]}
                   >
                     {selectedFaculty
                       ? selectedFaculty.name
                       : selectedUniversity
-                        ? 'Choose a faculty...'
+                        ? 'Intended faculty...'
                         : 'Select a university first...'}
-                  </ThemedText>
+                  </Text>
                   {loadingAcademic ? (
                     <ActivityIndicator size="small" color={colors.tint} />
                   ) : (
@@ -539,34 +725,54 @@ export default function JambOnboardingScreen() {
                 </Pressable>
 
                 {/* Department */}
-                <ThemedText style={styles.fieldLabel}>Department</ThemedText>
                 <Pressable
                   disabled={!selectedUniversity}
-                  onPress={() => setActivePicker('department')}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setFocusedField(null);
+                    setActivePicker('department');
+                  }}
                   style={[
                     styles.selectTrigger,
                     {
-                      backgroundColor: colors.backgroundElement,
-                      borderColor: colors.backgroundSelected,
-                      opacity: selectedUniversity ? 1 : 0.5,
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : '#FFFFFF',
+                      borderColor: selectedDepartment
+                        ? colors.tint
+                        : isDark
+                          ? colors.backgroundSelected
+                          : '#E2DFEF',
+                      borderWidth: selectedDepartment ? 1.5 : 1.2,
+                      opacity: selectedUniversity ? 1 : 0.55,
                     },
                   ]}
                 >
-                  <ThemedText
+                  <Ionicons
+                    name="book-outline"
+                    size={19}
+                    color={
+                      selectedDepartment ? colors.tint : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <Text
                     numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      color: selectedDepartment
-                        ? colors.text
-                        : colors.textSecondary,
-                    }}
+                    style={[
+                      styles.selectText,
+                      {
+                        color: selectedDepartment
+                          ? colors.text
+                          : colors.textSecondary,
+                      },
+                    ]}
                   >
                     {selectedDepartment
                       ? `${selectedDepartment.name}${selectedDepartment.code ? ` (${selectedDepartment.code})` : ''}`
                       : selectedUniversity
-                        ? 'Choose a department...'
+                        ? 'Intended department...'
                         : 'Select a university first...'}
-                  </ThemedText>
+                  </Text>
                   {loadingAcademic ? (
                     <ActivityIndicator size="small" color={colors.tint} />
                   ) : (
@@ -579,43 +785,72 @@ export default function JambOnboardingScreen() {
                 </Pressable>
 
                 {/* UTME Exam Year */}
-                <TextInput
-                  mode="outlined"
-                  label="UTME Exam Year (e.g. 2027)"
-                  value={examYear}
-                  onChangeText={setExamYear}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  style={[
-                    styles.input,
-                    {
-                      marginTop: 4,
-                      marginBottom: 0,
-                      backgroundColor: colors.background,
-                    },
-                  ]}
-                  outlineStyle={styles.inputOutline}
-                  outlineColor={colors.backgroundSelected}
-                  activeOutlineColor={colors.tint}
-                  textColor={colors.text}
-                />
+                <View
+                  style={[styles.pillInputWrapper, getPillStyle('examYear')]}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={19}
+                    color={
+                      focusedField === 'examYear'
+                        ? colors.tint
+                        : colors.textSecondary
+                    }
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    value={examYear}
+                    onChangeText={setExamYear}
+                    onFocus={() => setFocusedField('examYear')}
+                    onBlur={() =>
+                      setFocusedField((prev) =>
+                        prev === 'examYear' ? null : prev
+                      )
+                    }
+                    placeholder="UTME exam year (e.g. 2027)"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    returnKeyType="done"
+                    onSubmitEditing={handleSubmit}
+                    style={[styles.input, { color: colors.text }]}
+                  />
+                </View>
               </View>
 
-              <Button
-                mode="contained"
+              {/* Centralized Submit Button */}
+              <Pressable
                 onPress={handleSubmit}
-                loading={submitting}
                 disabled={submitting || usernameStatus === 'checking'}
-                buttonColor={colors.tint}
-                textColor="#ffffff"
-                style={styles.button}
-                contentStyle={styles.buttonContent}
-                labelStyle={styles.buttonLabel}
+                style={({ pressed }) => [
+                  styles.submitBtn,
+                  {
+                    backgroundColor: colors.tint,
+                    shadowColor: colors.tint,
+                    opacity:
+                      submitting || usernameStatus === 'checking'
+                        ? 0.65
+                        : pressed
+                          ? 0.9
+                          : 1,
+                  },
+                ]}
               >
-                Submit
-              </Button>
-            </View>
-          </ScrollView>
+                {submitting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <View style={styles.submitBtnContent}>
+                    <Text style={styles.submitBtnText}>Complete Setup</Text>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                )}
+              </Pressable>
+            </ScrollView>
+          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
@@ -635,16 +870,20 @@ export default function JambOnboardingScreen() {
           <View
             style={[
               styles.modalHeader,
-              { borderBottomColor: colors.backgroundSelected },
+              {
+                borderBottomColor: isDark
+                  ? colors.backgroundSelected
+                  : '#E2DFEF',
+              },
             ]}
           >
-            <ThemedText style={styles.modalTitle}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
               {activePicker === 'university'
                 ? 'Select University'
                 : activePicker === 'faculty'
                   ? 'Select Faculty'
                   : 'Select Department'}
-            </ThemedText>
+            </Text>
             <Pressable
               onPress={() => {
                 setActivePicker(null);
@@ -652,9 +891,9 @@ export default function JambOnboardingScreen() {
               }}
               hitSlop={10}
             >
-              <ThemedText style={{ color: colors.tint, fontWeight: '700' }}>
+              <Text style={[styles.modalDoneText, { color: colors.tint }]}>
                 Done
-              </ThemedText>
+              </Text>
             </Pressable>
           </View>
 
@@ -662,13 +901,13 @@ export default function JambOnboardingScreen() {
             style={[
               styles.searchBar,
               {
-                backgroundColor: colors.backgroundElement,
-                borderColor: colors.backgroundSelected,
+                backgroundColor: isDark ? colors.backgroundElement : '#FFFFFF',
+                borderColor: isDark ? colors.backgroundSelected : '#E2DFEF',
               },
             ]}
           >
             <Ionicons name="search" size={18} color={colors.textSecondary} />
-            <RNTextInput
+            <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder={
@@ -699,11 +938,9 @@ export default function JambOnboardingScreen() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
-              <ThemedText
-                style={[styles.emptyText, { color: colors.textSecondary }]}
-              >
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                 No matching results found
-              </ThemedText>
+              </Text>
             }
             renderItem={({ item }) => {
               const isSelected =
@@ -730,13 +967,25 @@ export default function JambOnboardingScreen() {
                   style={[
                     styles.optionRow,
                     isSelected && {
-                      backgroundColor: colors.backgroundElement,
+                      backgroundColor: isDark
+                        ? colors.backgroundElement
+                        : 'rgba(64, 35, 154, 0.08)',
                     },
                   ]}
                 >
-                  <ThemedText style={styles.optionText}>
+                  <Text
+                    style={[
+                      styles.optionText,
+                      {
+                        color: isSelected ? colors.tint : colors.text,
+                        fontFamily: isSelected
+                          ? Fonts.sansSemiBold
+                          : Fonts.sans,
+                      },
+                    ]}
+                  >
                     {item.code ? `${item.name} (${item.code})` : item.name}
-                  </ThemedText>
+                  </Text>
                   {isSelected && (
                     <Ionicons name="checkmark" size={18} color={colors.tint} />
                   )}
@@ -746,123 +995,198 @@ export default function JambOnboardingScreen() {
           />
         </SafeAreaView>
       </Modal>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  flex: { flex: 1 },
+  container: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 320,
+  },
   scrollContainer: {
     flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Spacing.five,
+    paddingHorizontal: 26,
+    paddingBottom: 36,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 6,
   },
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
   },
-  cardBox: {
-    borderWidth: 1,
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-  },
-  title: {
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    marginBottom: 18,
-  },
-  errorBox: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 14,
-    backgroundColor: 'rgba(255, 79, 90, 0.08)',
-  },
-  errorText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  sectionSafeBox: {
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  inputOutline: {
-    borderRadius: 12,
-  },
-  usernameHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
-    marginLeft: 4,
-  },
-  selectTrigger: {
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
+  rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 14,
-  },
-  button: {
-    marginTop: 4,
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
     borderRadius: 999,
+    borderWidth: 1.2,
   },
-  buttonContent: {
-    height: 50,
+  rolePillText: {
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 12,
   },
-  buttonLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 30,
   },
-  modalSafe: { flex: 1 },
+  brandName: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 23,
+    letterSpacing: -0.5,
+  },
+  headingBlock: {
+    marginBottom: 22,
+  },
+  title: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 29,
+    letterSpacing: -0.6,
+  },
+  subtitle: {
+    fontFamily: Fonts.sans,
+    fontSize: 14.5,
+    marginTop: 5,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 18,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 13,
+    color: '#EF4444',
+  },
+  sectionLabel: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 11.5,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    marginLeft: 6,
+  },
+  formGroup: {
+    gap: 14,
+    marginBottom: 24,
+  },
+  pillInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 56,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: '100%',
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+  },
+  usernameHint: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 12.5,
+    marginTop: 6,
+    marginLeft: 16,
+  },
+  selectTrigger: {
+    height: 56,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectText: {
+    flex: 1,
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    marginRight: 8,
+  },
+  submitBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  submitBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  submitBtnText: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 17,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  modalSafe: {
+    flex: 1,
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   modalTitle: {
+    fontFamily: Fonts.sansBold,
     fontSize: 17,
-    fontWeight: '700',
+  },
+  modalDoneText: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 15,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     margin: 16,
-    paddingHorizontal: 14,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingHorizontal: 16,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1.2,
   },
   searchInput: {
     flex: 1,
+    fontFamily: Fonts.sans,
     fontSize: 15,
   },
   listContent: {
@@ -874,15 +1198,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     marginBottom: 4,
   },
   optionText: {
     flex: 1,
     fontSize: 15,
+    marginRight: 8,
   },
   emptyText: {
+    fontFamily: Fonts.sans,
     textAlign: 'center',
     marginTop: 32,
     fontSize: 14,
